@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  sku          String        @unique
+  name         String
+  description  String?
+  price        Decimal       @db.Decimal(10, 2)
+  inventory    Inventory?
+  reservations Reservation[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("products")
+}
+
+model Inventory {
+  id                String   @id @default(uuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  totalQuantity     Int      @default(0)
+  availableQuantity Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@map("inventories")
+}
+
+model Reservation {
+  id             String    @id @default(uuid())
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Int
+  status         String    @default("PENDING") // PENDING, CONFIRMED, RELEASED, EXPIRED
+  idempotencyKey String?   @unique
+  expiresAt      DateTime
+  confirmedAt    DateTime?
+  releasedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, expiresAt])
+  @@map("reservations")
+}
+
+model IdempotencyRecord {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  requestPath   String
+  requestMethod String
+  requestHash   String
+  statusCode    Int
+  responseBody  String
+  createdAt     DateTime @default(now())
+
+  @@map("idempotency_records")
+}
