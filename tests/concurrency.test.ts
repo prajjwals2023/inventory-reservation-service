@@ -1,6 +1,6 @@
-const request = require('supertest');
-const app = require('../src/app');
-const prisma = require('../src/config/database');
+import request from 'supertest';
+import app from '../src/app';
+import prisma from '../src/config/database';
 
 describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
   beforeAll(async () => {
@@ -57,16 +57,16 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
       where: { productId },
     });
 
-    expect(inv.totalQuantity).toBe(10);
-    expect(inv.availableQuantity).toBeGreaterThanOrEqual(0);
-    expect(inv.availableQuantity + inv.reservedQuantity).toBe(10);
+    expect(inv?.totalQuantity).toBe(10);
+    expect(inv?.availableQuantity).toBeGreaterThanOrEqual(0);
+    expect((inv?.availableQuantity ?? 0) + (inv?.reservedQuantity ?? 0)).toBe(10);
 
     if (successRes.body.quantity === 7) {
-      expect(inv.availableQuantity).toBe(3);
-      expect(inv.reservedQuantity).toBe(7);
+      expect(inv?.availableQuantity).toBe(3);
+      expect(inv?.reservedQuantity).toBe(7);
     } else {
-      expect(inv.availableQuantity).toBe(5);
-      expect(inv.reservedQuantity).toBe(5);
+      expect(inv?.availableQuantity).toBe(5);
+      expect(inv?.reservedQuantity).toBe(5);
     }
   });
 
@@ -109,10 +109,10 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
       where: { productId },
     });
 
-    expect(inv.totalQuantity).toBe(15);
-    expect(inv.availableQuantity).toBe(1);
-    expect(inv.reservedQuantity).toBe(14);
-    expect(inv.availableQuantity).toBeGreaterThanOrEqual(0);
+    expect(inv?.totalQuantity).toBe(15);
+    expect(inv?.availableQuantity).toBe(1);
+    expect(inv?.reservedQuantity).toBe(14);
+    expect(inv?.availableQuantity).toBeGreaterThanOrEqual(0);
   });
 
   test('Concurrent Double-Confirm: Two simultaneous confirms on the same reservation', async () => {
@@ -156,9 +156,9 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
     const inv = await prisma.inventory.findUnique({
       where: { productId: product.id },
     });
-    expect(inv.totalQuantity).toBe(6);
-    expect(inv.availableQuantity).toBe(6);
-    expect(inv.reservedQuantity).toBe(0);
+    expect(inv?.totalQuantity).toBe(6);
+    expect(inv?.availableQuantity).toBe(6);
+    expect(inv?.reservedQuantity).toBe(0);
   });
 
   test('Concurrent Confirm vs Release: One confirm and one release at the exact same moment', async () => {
@@ -201,16 +201,16 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
     });
 
     // Reserved quantity must NEVER be negative
-    expect(inv.reservedQuantity).toBe(0);
+    expect(inv?.reservedQuantity).toBe(0);
 
     if (confirmRes.status === 200) {
       // Confirm won: total decremented to 7, available stayed 7
-      expect(inv.totalQuantity).toBe(7);
-      expect(inv.availableQuantity).toBe(7);
+      expect(inv?.totalQuantity).toBe(7);
+      expect(inv?.availableQuantity).toBe(7);
     } else {
       // Release won: total stayed 10, available restored to 10
-      expect(inv.totalQuantity).toBe(10);
-      expect(inv.availableQuantity).toBe(10);
+      expect(inv?.totalQuantity).toBe(10);
+      expect(inv?.availableQuantity).toBe(10);
     }
   });
 
@@ -260,8 +260,8 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
     const inv = await prisma.inventory.findUnique({
       where: { productId: product.id },
     });
-    expect(inv.availableQuantity).toBe(6);
-    expect(inv.reservedQuantity).toBe(4);
+    expect(inv?.availableQuantity).toBe(6);
+    expect(inv?.reservedQuantity).toBe(4);
   });
 
   test('Reserve Pre-Expires Overdue Stock: Recycles expired reservations inline before checking availability', async () => {
@@ -306,7 +306,7 @@ describe('Concurrency, Race Condition Prevention, and Edge Cases', () => {
 
     // Available: 1 + 5 (recycled) - 4 (new reservation) = 2
     // Reserved: 9 - 5 (expired) + 4 (new reservation) = 8
-    expect(inv.availableQuantity).toBe(2);
-    expect(inv.reservedQuantity).toBe(8);
+    expect(inv?.availableQuantity).toBe(2);
+    expect(inv?.reservedQuantity).toBe(8);
   });
 });

@@ -1,6 +1,6 @@
-const request = require('supertest');
-const app = require('../src/app');
-const prisma = require('../src/config/database');
+import request from 'supertest';
+import app from '../src/app';
+import prisma from '../src/config/database';
 
 describe('Product and Inventory API Tests', () => {
   beforeAll(async () => {

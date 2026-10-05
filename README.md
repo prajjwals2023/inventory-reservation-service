@@ -149,12 +149,14 @@ To prevent stale state, a **Dual-Layer Expiry** strategy is implemented:
 
 | Layer | Technology |
 | :--- | :--- |
+| **Language** | TypeScript 5.6 (strict mode) |
 | **Runtime** | Node.js (v20+ / v22) |
-| **Web Framework** | Express.js |
-| **ORM / Query Builder** | Prisma ORM |
+| **Web Framework** | Express.js (`@types/express`) |
+| **ORM / Query Builder** | Prisma ORM (with generated TypeScript types) |
 | **Database** | PostgreSQL 16 (ACID transactions, pessimistic row locking) |
 | **Documentation** | OpenAPI 3.0 / Swagger UI (`swagger-ui-express`) |
-| **Testing** | Jest & Supertest |
+| **Testing** | Jest, Supertest & `ts-jest` |
+| **Dev Server** | `ts-node-dev` (fast TypeScript execution with hot-reload) |
 | **Containerization** | Docker & Docker Compose |
 
 ---
@@ -265,13 +267,16 @@ npm install
 npx prisma db push
 ```
 
-#### 4. Start the Application:
-```bash
-npm start
-```
-For auto-reload during development:
+#### 4. Build & Start the Application:
+For development with auto-reload (using `ts-node-dev`):
 ```bash
 npm run dev
+```
+
+To compile TypeScript and run production build:
+```bash
+npm run build
+npm start
 ```
 
 ---

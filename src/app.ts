@@ -1,11 +1,11 @@
-const express = require('express');
-const cors = require('cors');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDoc = require('./config/swaggerDoc');
-const productRoutes = require('./routes/productRoutes');
-const inventoryRoutes = require('./routes/inventoryRoutes');
-const reservationRoutes = require('./routes/reservationRoutes');
-const { errorHandler, NotFoundError } = require('./middleware/errorHandler');
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
+import swaggerDoc from './config/swaggerDoc';
+import productRoutes from './routes/productRoutes';
+import inventoryRoutes from './routes/inventoryRoutes';
+import reservationRoutes from './routes/reservationRoutes';
+import { errorHandler, NotFoundError } from './middleware/errorHandler';
 
 const app = express();
 
@@ -16,7 +16,7 @@ app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 
 // Healthcheck endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'OK',
     timestamp: new Date().toISOString(),
@@ -30,11 +30,11 @@ app.use('/inventory', inventoryRoutes);
 app.use('/reservations', reservationRoutes);
 
 // Catch 404 for unhandled routes
-app.use((req, res, next) => {
+app.use((req: Request, _res: Response, next: NextFunction) => {
   next(new NotFoundError(`Endpoint '${req.method} ${req.originalUrl}' not found`));
 });
 
 // Centralized error handler
 app.use(errorHandler);
 
-module.exports = app;
+export default app;

@@ -1,10 +1,10 @@
-const request = require('supertest');
-const app = require('../src/app');
-const prisma = require('../src/config/database');
-const { startReservationExpiryJob, stopReservationExpiryJob } = require('../src/jobs/expireReservations');
+import request from 'supertest';
+import app from '../src/app';
+import prisma from '../src/config/database';
+import { startReservationExpiryJob, stopReservationExpiryJob } from '../src/jobs/expireReservations';
 
 describe('Reservation Lifecycle and Business Scenarios', () => {
-  let testProductId;
+  let testProductId: string;
 
   beforeAll(async () => {
     await prisma.$connect();
@@ -272,13 +272,13 @@ describe('Reservation Lifecycle and Business Scenarios', () => {
     const updated = await prisma.reservation.findUnique({
       where: { id: 'worker-test-res' },
     });
-    expect(updated.status).toBe('EXPIRED');
+    expect(updated?.status).toBe('EXPIRED');
 
     // Check that inventory was automatically restored
     const inv = await prisma.inventory.findUnique({
       where: { productId: testProductId },
     });
-    expect(inv.availableQuantity).toBe(10);
-    expect(inv.reservedQuantity).toBe(0);
+    expect(inv?.availableQuantity).toBe(10);
+    expect(inv?.reservedQuantity).toBe(0);
   });
 });

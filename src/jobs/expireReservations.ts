@@ -1,8 +1,8 @@
-const reservationService = require('../services/reservationService');
+import reservationService from '../services/reservationService';
 
-let intervalHandle = null;
+let intervalHandle: NodeJS.Timeout | null = null;
 
-function startReservationExpiryJob(intervalSeconds = null) {
+export function startReservationExpiryJob(intervalSeconds?: number): void {
   const seconds = intervalSeconds || parseInt(process.env.CLEANUP_INTERVAL_SECONDS || '30', 10);
   const intervalMs = seconds * 1000;
 
@@ -33,14 +33,9 @@ function startReservationExpiryJob(intervalSeconds = null) {
   }
 }
 
-function stopReservationExpiryJob() {
+export function stopReservationExpiryJob(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
 }
-
-module.exports = {
-  startReservationExpiryJob,
-  stopReservationExpiryJob,
-};

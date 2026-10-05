@@ -1,16 +1,36 @@
-const crypto = require('crypto');
-const prisma = require('../config/database');
-const {
+import crypto from 'crypto';
+import prisma from '../config/database';
+import {
   NotFoundError,
   InsufficientInventoryError,
   InvalidStateError,
   IdempotencyConflictError,
   ValidationError,
-} = require('../middleware/errorHandler');
-const { ReservationStatus } = require('../models/reservation');
+} from '../middleware/errorHandler';
+import { ReservationStatus } from '../models/reservation';
+import { Reservation, Prisma } from '@prisma/client';
+
+export interface ReserveInput {
+  productId: string;
+  quantity: number;
+  idempotencyKey?: string | null;
+}
+
+export interface ReserveResult {
+  data: Reservation;
+  isIdempotentReplay: boolean;
+}
+
+interface ExecuteReservationParams {
+  productId: string;
+  quantity: number;
+  trimmedKey: string | null;
+  requestHash: string | null;
+  expiresAt: Date;
+}
 
 class ReservationService {
-  async reserve({ productId, quantity, idempotencyKey }) {
+  async reserve({ productId, quantity, idempotencyKey }: ReserveInput): Promise<ReserveResult> {
     if (!productId || typeof productId !== 'string') {
       throw new ValidationError('Product ID is required');
     }
@@ -20,7 +40,7 @@ class ReservationService {
     }
 
     const trimmedKey = idempotencyKey ? idempotencyKey.trim() : null;
-    let requestHash = null;
+    let requestHash: string | null = null;
 
     // Fast-path idempotency check before acquiring database locks
     if (trimmedKey) {
@@ -56,10 +76,10 @@ class ReservationService {
         requestHash,
         expiresAt,
       });
-    } catch (err) {
+    } catch (err: unknown) {
       // Handle race condition where two concurrent requests with the exact same
       // idempotency key both passed the initial lookup and hit a unique constraint (P2002)
-      if (err.code === 'P2002' && trimmedKey) {
+      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002' && trimmedKey) {
         const existingRecord = await prisma.idempotencyRecord.findUnique({
           where: { key: trimmedKey },
         });
@@ -79,10 +99,16 @@ class ReservationService {
     }
   }
 
-  async _executeReservationTransaction({ productId, quantity, trimmedKey, requestHash, expiresAt }) {
+  async _executeReservationTransaction({
+    productId,
+    quantity,
+    trimmedKey,
+    requestHash,
+    expiresAt,
+  }: ExecuteReservationParams): Promise<ReserveResult> {
     return await prisma.$transaction(async (tx) => {
       // 1. Pessimistic row lock on product inventory
-      const [lockedRow] = await tx.$queryRaw`
+      const [lockedRow] = await tx.$queryRaw<Array<{ id: string; productId: string }>>`
         SELECT * FROM "inventories" WHERE "productId" = ${productId} FOR UPDATE
       `;
 
@@ -123,9 +149,9 @@ class ReservationService {
         where: { productId },
       });
 
-      if (inventory.availableQuantity < quantity) {
+      if (!inventory || inventory.availableQuantity < quantity) {
         throw new InsufficientInventoryError(
-          `Insufficient inventory. Requested: ${quantity}, Available: ${inventory.availableQuantity}`
+          `Insufficient inventory. Requested: ${quantity}, Available: ${inventory?.availableQuantity ?? 0}`
         );
       }
 
@@ -156,7 +182,7 @@ class ReservationService {
             key: trimmedKey,
             requestPath: `/inventory/${productId}/reserve`,
             requestMethod: 'POST',
-            requestHash,
+            requestHash: requestHash!,
             statusCode: 201,
             responseBody: JSON.stringify(reservation),
           },
@@ -167,7 +193,7 @@ class ReservationService {
     });
   }
 
-  async confirmReservation(reservationId) {
+  async confirmReservation(reservationId: string): Promise<Reservation | null> {
     if (!reservationId) {
       throw new ValidationError('Reservation ID is required');
     }
@@ -204,6 +230,9 @@ class ReservationService {
       if (updateResult.count === 0) {
         // Find current state to report accurate error and handle expired inline
         const current = await tx.reservation.findUnique({ where: { id: reservationId } });
+        if (!current) {
+          throw new NotFoundError(`Reservation with ID '${reservationId}' not found`);
+        }
         if (current.status === ReservationStatus.PENDING && current.expiresAt <= now) {
           // Atomically expire and return stock to available
           await tx.reservation.updateMany({
@@ -237,7 +266,7 @@ class ReservationService {
     });
   }
 
-  async releaseReservation(reservationId) {
+  async releaseReservation(reservationId: string): Promise<Reservation | null> {
     if (!reservationId) {
       throw new ValidationError('Reservation ID is required');
     }
@@ -288,8 +317,9 @@ class ReservationService {
 
       if (updateResult.count === 0) {
         const current = await tx.reservation.findUnique({ where: { id: reservationId } });
+        const currentStatus = current ? current.status : 'UNKNOWN';
         throw new InvalidStateError(
-          `Cannot release reservation in '${current.status}' state. Only PENDING reservations can be released.`
+          `Cannot release reservation in '${currentStatus}' state. Only PENDING reservations can be released.`
         );
       }
 
@@ -306,7 +336,7 @@ class ReservationService {
     });
   }
 
-  async getReservationById(reservationId) {
+  async getReservationById(reservationId: string) {
     if (!reservationId) {
       throw new ValidationError('Reservation ID is required');
     }
@@ -350,7 +380,7 @@ class ReservationService {
     return reservation;
   }
 
-  async expireSingleReservation(reservation) {
+  async expireSingleReservation(reservation: { id: string; productId: string; quantity: number }): Promise<void> {
     try {
       await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`
@@ -377,12 +407,13 @@ class ReservationService {
           });
         }
       });
-    } catch (err) {
-      console.error(`[ReservationService] Failed to expire reservation ${reservation.id}:`, err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[ReservationService] Failed to expire reservation ${reservation.id}:`, msg);
     }
   }
 
-  async expireOverdueReservations() {
+  async expireOverdueReservations(): Promise<{ expiredCount: number }> {
     const now = new Date();
     const overdue = await prisma.reservation.findMany({
       where: {
@@ -421,8 +452,9 @@ class ReservationService {
             expiredCount++;
           }
         });
-      } catch (err) {
-        console.error(`[ReservationService] Error expiring reservation ${res.id}:`, err.message);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[ReservationService] Error expiring reservation ${res.id}:`, msg);
       }
     }
 
@@ -430,4 +462,4 @@ class ReservationService {
   }
 }
 
-module.exports = new ReservationService();
+export default new ReservationService();

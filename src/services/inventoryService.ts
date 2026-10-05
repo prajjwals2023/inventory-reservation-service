@@ -1,8 +1,27 @@
-const prisma = require('../config/database');
-const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
+import prisma from '../config/database';
+import { NotFoundError, ValidationError } from '../middleware/errorHandler';
+import { ReservationStatus } from '../models/reservation';
+
+export interface InventoryResponse {
+  productId: string;
+  productName: string;
+  sku: string;
+  totalQuantity: number;
+  availableQuantity: number;
+  reservedQuantity: number;
+  updatedAt: Date;
+}
+
+export interface RestockResponse {
+  productId: string;
+  totalQuantity: number;
+  availableQuantity: number;
+  reservedQuantity: number;
+  updatedAt: Date;
+}
 
 class InventoryService {
-  async getInventory(productId) {
+  async getInventory(productId: string): Promise<InventoryResponse> {
     if (!productId) {
       throw new ValidationError('Product ID is required');
     }
@@ -38,14 +57,14 @@ class InventoryService {
     };
   }
 
-  async restockInventory(productId, quantity) {
+  async restockInventory(productId: string, quantity: number): Promise<RestockResponse> {
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ValidationError('Restock quantity must be a positive integer');
     }
 
     return await prisma.$transaction(async (tx) => {
       // Row-level lock to ensure safe atomic updates
-      const [inventory] = await tx.$queryRaw`
+      const [inventory] = await tx.$queryRaw<Array<{ id: string; productId: string }>>`
         SELECT * FROM "inventories" WHERE "productId" = ${productId} FOR UPDATE
       `;
 
@@ -71,12 +90,12 @@ class InventoryService {
     });
   }
 
-  async lazyExpireReservationsForProduct(productId) {
+  async lazyExpireReservationsForProduct(productId: string): Promise<void> {
     const now = new Date();
     const expiredReservations = await prisma.reservation.findMany({
       where: {
         productId,
-        status: 'PENDING',
+        status: ReservationStatus.PENDING,
         expiresAt: { lte: now },
       },
     });
@@ -95,10 +114,10 @@ class InventoryService {
           const updatedRes = await tx.reservation.updateMany({
             where: {
               id: res.id,
-              status: 'PENDING',
+              status: ReservationStatus.PENDING,
             },
             data: {
-              status: 'EXPIRED',
+              status: ReservationStatus.EXPIRED,
             },
           });
 
@@ -113,11 +132,11 @@ class InventoryService {
             });
           }
         });
-      } catch (err) {
+      } catch (err: unknown) {
         // Continue if another worker or concurrent process already expired it
       }
     }
   }
 }
 
-module.exports = new InventoryService();
+export default new InventoryService();

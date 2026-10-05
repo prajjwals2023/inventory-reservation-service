@@ -1,11 +1,13 @@
-require('dotenv').config();
-const app = require('./app');
-const prisma = require('./config/database');
-const { startReservationExpiryJob, stopReservationExpiryJob } = require('./jobs/expireReservations');
+import dotenv from 'dotenv';
+dotenv.config();
+
+import app from './app';
+import prisma from './config/database';
+import { startReservationExpiryJob, stopReservationExpiryJob } from './jobs/expireReservations';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-async function startServer() {
+export async function startServer(): Promise<void> {
   try {
     // Verify database connection
     await prisma.$connect();
@@ -19,7 +21,7 @@ async function startServer() {
       console.log(`API Documentation available at: http://localhost:${PORT}/api-docs`);
     });
 
-    const shutdown = async (signal) => {
+    const shutdown = async (signal: string) => {
       console.log(`\nReceived ${signal}. Gracefully shutting down...`);
       stopReservationExpiryJob();
       server.close(async () => {
@@ -40,5 +42,3 @@ async function startServer() {
 if (require.main === module) {
   startServer();
 }
-
-module.exports = { startServer };

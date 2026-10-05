@@ -1,36 +1,54 @@
-const prisma = require('../config/database');
-const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
-const { validateProductInput } = require('../models/product');
+import prisma from '../config/database';
+import { NotFoundError, ValidationError } from '../middleware/errorHandler';
+import { validateProductInput, ProductInput } from '../models/product';
+import { Prisma } from '@prisma/client';
+
+export interface InventorySummary {
+  totalQuantity: number;
+  availableQuantity: number;
+  reservedQuantity: number;
+}
+
+export interface ProductWithInventory {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: Prisma.Decimal;
+  createdAt: Date;
+  updatedAt: Date;
+  inventory: InventorySummary;
+}
 
 class ProductService {
-  async createProduct({ sku, name, description, price, initialStock = 0 }) {
-    const validationErrors = validateProductInput({ sku, name, price, initialStock });
+  async createProduct(input: ProductInput): Promise<ProductWithInventory> {
+    const validationErrors = validateProductInput(input);
     if (validationErrors.length > 0) {
       throw new ValidationError('Invalid product input', validationErrors);
     }
 
     const existing = await prisma.product.findUnique({
-      where: { sku: sku.trim() },
+      where: { sku: input.sku.trim() },
     });
     if (existing) {
-      throw new ValidationError(`Product with SKU '${sku}' already exists`);
+      throw new ValidationError(`Product with SKU '${input.sku}' already exists`);
     }
 
     return await prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
         data: {
-          sku: sku.trim(),
-          name: name.trim(),
-          description: description ? description.trim() : null,
-          price,
+          sku: input.sku.trim(),
+          name: input.name.trim(),
+          description: input.description ? input.description.trim() : null,
+          price: input.price,
         },
       });
 
       const inventory = await tx.inventory.create({
         data: {
           productId: product.id,
-          totalQuantity: initialStock,
-          availableQuantity: initialStock,
+          totalQuantity: input.initialStock ?? 0,
+          availableQuantity: input.initialStock ?? 0,
           reservedQuantity: 0,
         },
       });
@@ -47,7 +65,7 @@ class ProductService {
   }
 
   async getAllProducts() {
-    const products = await prisma.product.findMany({
+    return await prisma.product.findMany({
       include: {
         inventory: {
           select: {
@@ -60,10 +78,9 @@ class ProductService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return products;
   }
 
-  async getProductById(id) {
+  async getProductById(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
@@ -85,29 +102,33 @@ class ProductService {
     return product;
   }
 
-  async updateProduct(id, { name, description, price }) {
-    const existing = await this.getProductById(id);
+  async updateProduct(
+    id: string,
+    updates: { name?: string; description?: string | null; price?: number }
+  ) {
+    await this.getProductById(id);
 
-    const updateData = {};
-    if (name !== undefined) {
-      if (typeof name !== 'string' || name.trim().length === 0) {
+    const updateData: Prisma.ProductUpdateInput = {};
+
+    if (updates.name !== undefined) {
+      if (typeof updates.name !== 'string' || updates.name.trim().length === 0) {
         throw new ValidationError('Name must be a non-empty string');
       }
-      updateData.name = name.trim();
+      updateData.name = updates.name.trim();
     }
 
-    if (description !== undefined) {
-      updateData.description = description ? description.trim() : null;
+    if (updates.description !== undefined) {
+      updateData.description = updates.description ? updates.description.trim() : null;
     }
 
-    if (price !== undefined) {
-      if (typeof price !== 'number' || price < 0) {
+    if (updates.price !== undefined) {
+      if (typeof updates.price !== 'number' || updates.price < 0) {
         throw new ValidationError('Price must be a non-negative number');
       }
-      updateData.price = price;
+      updateData.price = updates.price;
     }
 
-    const updated = await prisma.product.update({
+    return await prisma.product.update({
       where: { id },
       data: updateData,
       include: {
@@ -121,19 +142,15 @@ class ProductService {
         },
       },
     });
-
-    return updated;
   }
 
-  async deleteProduct(id) {
+  async deleteProduct(id: string): Promise<{ message: string }> {
     await this.getProductById(id);
 
-    await prisma.product.delete({
-      where: { id },
-    });
+    await prisma.product.delete({ where: { id } });
 
     return { message: `Product with ID '${id}' successfully deleted` };
   }
 }
 
-module.exports = new ProductService();
+export default new ProductService();
